@@ -131,6 +131,59 @@ code{background:var(--soft);border-radius:6px;padding:1px 6px;overflow-wrap:anyw
 </style>
 </head>
 <body>
+   
+<style>
+  .hack-banner {
+    background: #090909;
+    border: 3px solid red;
+    padding: 30px 15px;
+    text-align: center;
+    box-shadow: inset 0 0 35px #ff000055;
+    font-family: monospace;
+    animation: hack-flash 2s infinite alternate;
+  }
+
+  .hack-banner h1 {
+    color: #ff2424;
+    font-size: clamp(26px, 6vw, 48px);
+    font-weight: 900;
+    text-shadow: 0 0 20px red;
+    margin: 15px 0;
+  }
+
+  .hack-banner p {
+    color: white;
+    font-size: 16px;
+    letter-spacing: 3px;
+  }
+
+  .hack-banner img {
+    width: 130px;
+    height: 130px;
+    object-fit: contain;
+  }
+
+  @keyframes hack-flash {
+    from { box-shadow: inset 0 0 10px #ff000033; }
+    to { box-shadow: inset 0 0 45px #ff000088; }
+  }
+</style>
+
+<section class="hack-banner">
+  <img
+    src="https://upload.wikimedia.org/wikipedia/commons/0/0a/Spinningskull.gif"
+    alt="Spinning skull"
+  >
+
+  <h1>YOUR WEBSITE HAS BEEN HACKED</h1>
+
+  <p>⚠ SYSTEM COMPROMISED ⚠</p>
+
+  <small style="color:#aaa">
+    GIF: Bugb0yguy / Wikimedia Commons (CC BY-SA 4.0)
+  </small>
+</section>
+
 <main class="in">
   <div class="top">
     <button class="loc" id="chg" type="button" aria-label="Changer de position">
