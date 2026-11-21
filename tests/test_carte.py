@@ -8,7 +8,7 @@ async def main():
     os.makedirs("captures", exist_ok=True)
     async with async_playwright() as p:
         b = await p.chromium.launch()
-        ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2,
+        ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, timezone_id="America/Toronto",
                                   geolocation={"latitude": 45.556, "longitude": -73.748}, permissions=["geolocation"],
                                   user_agent="Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36")
         pg = await ctx.new_page()
@@ -20,6 +20,14 @@ async def main():
         await pg.goto(URL, wait_until="networkidle")
         await pg.wait_for_timeout(2500)
         await pg.screenshot(path="captures/accueil.png")
+        print("Heure locale :", await pg.evaluate("new Date().toString()"))
+        print("Ouvertes seulement :", await pg.is_checked("#openCk"))
+        print("Station conseillée :", (await pg.inner_text("#hero")).replace("\n", " / ")[:220])
+        print("Autres choix :", (await pg.inner_text("#list")).replace("\n", " / ")[:300])
+        await pg.click("#openCk"); await pg.wait_for_timeout(500)
+        print("Toutes (fermées incluses) :", (await pg.inner_text("#hero")).replace("\n", " / ")[:220])
+        await pg.screenshot(path="captures/toutes.png")
+        await pg.click("#openCk"); await pg.wait_for_timeout(300)
         await pg.click(".bnav button[data-t=map]")
         await pg.wait_for_timeout(6000)
         await pg.screenshot(path="captures/carte.png")
