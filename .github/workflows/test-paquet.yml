@@ -1,0 +1,24 @@
+name: Test du renvoi de paquet
+on: workflow_dispatch
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Paquet (échec simulé)
+        id: pk1
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: dossier-inexistant, name: essai-1 }
+      - name: Attente
+        if: steps.pk1.outcome == 'failure'
+        run: sleep 5
+      - name: Paquet (nouvel essai)
+        id: pk1b
+        if: steps.pk1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: essai-1b }
+      - name: Nom choisi pour la publication
+        if: steps.pk1.outcome == 'success' || steps.pk1b.outcome == 'success'
+        run: echo "Publication avec ${{ steps.pk1.outcome == 'success' && 'essai-1' || 'essai-1b' }} (pk1=${{ steps.pk1.outcome }}, pk1b=${{ steps.pk1b.outcome }})"
