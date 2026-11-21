@@ -1,0 +1,13 @@
+name: Test des heures d'ouverture
+
+on: workflow_dispatch
+
+jobs:
+  heures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prix les plus récents
+        run: curl -sS "https://nadji-b02.github.io/essence-quebec/stations.json?t=$(date +%s)" -o site/stations.json
+      - name: Heures OSM
+        run: python scripts/heures.py --stats
