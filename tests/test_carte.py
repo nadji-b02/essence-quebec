@@ -24,7 +24,12 @@ async def main():
         print("Ouvertes seulement :", await pg.is_checked("#openCk"))
         print("Station conseillée :", (await pg.inner_text("#hero")).replace("\n", " / ")[:220])
         print("Autres choix :", (await pg.inner_text("#list")).replace("\n", " / ")[:300])
+        tout = lambda: pg.evaluate("document.querySelector('#v-list').innerText")
+        cc = lambda t: [l for l in t.split("\n") if "Costco" in l or "fermé" in l.lower()][:4]
+        print("Costco/fermé (ouvertes seulement) :", cc(await tout()))
         await pg.click("#openCk"); await pg.wait_for_timeout(500)
+        await pg.click("#moreBtn") if await pg.is_visible("#moreBtn") else None
+        print("Costco/fermé (toutes) :", cc(await tout()))
         print("Toutes (fermées incluses) :", (await pg.inner_text("#hero")).replace("\n", " / ")[:220])
         await pg.screenshot(path="captures/toutes.png")
         await pg.click("#openCk"); await pg.wait_for_timeout(300)
