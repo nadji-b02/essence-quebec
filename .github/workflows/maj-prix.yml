@@ -53,13 +53,26 @@ jobs:
       - name: Prix 1
         run: bash scripts/tour.sh
       - name: Paquet 1
+        id: pk1
+        continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with: { path: site, name: pages-1 }
+      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
+      - name: Attente paquet 1
+        if: steps.pk1.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 1 (nouvel essai)
+        id: pk1b
+        if: steps.pk1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-1b }
       - name: Publication 1
         id: dep1
+        if: (steps.pk1.outcome == 'success' || steps.pk1b.outcome == 'success')
         continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-1 }
+        with: { artifact_name: "${{ steps.pk1.outcome == 'success' && 'pages-1' || 'pages-1b' }}" }
       # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 1
         if: steps.dep1.outcome == 'failure'
@@ -69,21 +82,33 @@ jobs:
         if: steps.dep1.outcome == 'failure'
         continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-1 }
+        with: { artifact_name: "${{ steps.pk1.outcome == 'success' && 'pages-1' || 'pages-1b' }}" }
       # Mise à jour 2
       - name: Prix 2
         if: fromJSON(env.TOURS) >= 2
         run: sleep $((PAUSE*60)) && bash scripts/tour.sh
       - name: Paquet 2
-        if: fromJSON(env.TOURS) >= 2
-        uses: actions/upload-pages-artifact@v3
-        with: { path: site, name: pages-2 }
-      - name: Publication 2
-        id: dep2
+        id: pk2
         if: fromJSON(env.TOURS) >= 2
         continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-2 }
+      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
+      - name: Attente paquet 2
+        if: fromJSON(env.TOURS) >= 2 && steps.pk2.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 2 (nouvel essai)
+        id: pk2b
+        if: fromJSON(env.TOURS) >= 2 && steps.pk2.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-2b }
+      - name: Publication 2
+        id: dep2
+        if: fromJSON(env.TOURS) >= 2 && (steps.pk2.outcome == 'success' || steps.pk2b.outcome == 'success')
+        continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-2 }
+        with: { artifact_name: "${{ steps.pk2.outcome == 'success' && 'pages-2' || 'pages-2b' }}" }
       # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 2
         if: fromJSON(env.TOURS) >= 2 && steps.dep2.outcome == 'failure'
@@ -93,21 +118,33 @@ jobs:
         if: fromJSON(env.TOURS) >= 2 && steps.dep2.outcome == 'failure'
         continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-2 }
+        with: { artifact_name: "${{ steps.pk2.outcome == 'success' && 'pages-2' || 'pages-2b' }}" }
       # Mise à jour 3
       - name: Prix 3
         if: fromJSON(env.TOURS) >= 3
         run: sleep $((PAUSE*60)) && bash scripts/tour.sh
       - name: Paquet 3
-        if: fromJSON(env.TOURS) >= 3
-        uses: actions/upload-pages-artifact@v3
-        with: { path: site, name: pages-3 }
-      - name: Publication 3
-        id: dep3
+        id: pk3
         if: fromJSON(env.TOURS) >= 3
         continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-3 }
+      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
+      - name: Attente paquet 3
+        if: fromJSON(env.TOURS) >= 3 && steps.pk3.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 3 (nouvel essai)
+        id: pk3b
+        if: fromJSON(env.TOURS) >= 3 && steps.pk3.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-3b }
+      - name: Publication 3
+        id: dep3
+        if: fromJSON(env.TOURS) >= 3 && (steps.pk3.outcome == 'success' || steps.pk3b.outcome == 'success')
+        continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-3 }
+        with: { artifact_name: "${{ steps.pk3.outcome == 'success' && 'pages-3' || 'pages-3b' }}" }
       # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 3
         if: fromJSON(env.TOURS) >= 3 && steps.dep3.outcome == 'failure'
@@ -117,21 +154,33 @@ jobs:
         if: fromJSON(env.TOURS) >= 3 && steps.dep3.outcome == 'failure'
         continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-3 }
+        with: { artifact_name: "${{ steps.pk3.outcome == 'success' && 'pages-3' || 'pages-3b' }}" }
       # Mise à jour 4
       - name: Prix 4
         if: fromJSON(env.TOURS) >= 4
         run: sleep $((PAUSE*60)) && bash scripts/tour.sh
       - name: Paquet 4
-        if: fromJSON(env.TOURS) >= 4
-        uses: actions/upload-pages-artifact@v3
-        with: { path: site, name: pages-4 }
-      - name: Publication 4
-        id: dep4
+        id: pk4
         if: fromJSON(env.TOURS) >= 4
         continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-4 }
+      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
+      - name: Attente paquet 4
+        if: fromJSON(env.TOURS) >= 4 && steps.pk4.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 4 (nouvel essai)
+        id: pk4b
+        if: fromJSON(env.TOURS) >= 4 && steps.pk4.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-4b }
+      - name: Publication 4
+        id: dep4
+        if: fromJSON(env.TOURS) >= 4 && (steps.pk4.outcome == 'success' || steps.pk4b.outcome == 'success')
+        continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-4 }
+        with: { artifact_name: "${{ steps.pk4.outcome == 'success' && 'pages-4' || 'pages-4b' }}" }
       # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 4
         if: fromJSON(env.TOURS) >= 4 && steps.dep4.outcome == 'failure'
@@ -141,7 +190,7 @@ jobs:
         if: fromJSON(env.TOURS) >= 4 && steps.dep4.outcome == 'failure'
         continue-on-error: true
         uses: actions/deploy-pages@v4
-        with: { artifact_name: pages-4 }
+        with: { artifact_name: "${{ steps.pk4.outcome == 'success' && 'pages-4' || 'pages-4b' }}" }
 
       # Échec seulement si aucune publication n'a réussi pendant tout le lancement.
       - name: Bilan
