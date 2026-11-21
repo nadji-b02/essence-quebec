@@ -6,6 +6,7 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git pull -q --rebase --autostash origin main || true
 
 if python scripts/maj.py site/stations.json; then etat=success; else etat=failure; fi
+python scripts/heures.py || true
 python scripts/historique.py || true
 python scripts/alertes.py "$etat" || true
 

@@ -86,6 +86,9 @@ h3{font-size:14px;font-weight:600;color:var(--mute);margin:26px 0 4px}
 .star svg.i{width:22px;height:22px}
 .star.on{color:#f59e0b}.star.on svg.i{fill:#f59e0b}
 .hero .name .star{display:inline-grid;vertical-align:middle;margin-left:2px}
+.hero .oh{margin:4px 0 0;font-size:14px;color:var(--gtext);font-weight:500}.hero .oh.shut{color:var(--red)}
+.ohtag{font-size:12px;font-weight:600;border-radius:6px;padding:1px 6px;vertical-align:1px}
+.ohtag.shut{background:light-dark(#fee2e2,#3b1414);color:var(--red)}.ohtag.soon{background:light-dark(#fef3c7,#3a2c0a);color:var(--amber)}
 .hero .rab{margin:6px 0 0;font-size:14px;color:var(--mute)}
 .hero .share{width:100%;margin-top:10px}
 .ac{position:relative;flex:1 1 180px}.ac input{width:100%}
@@ -161,6 +164,7 @@ code{background:var(--soft);border-radius:6px;padding:1px 6px;overflow-wrap:anyw
     <div class="seg hide-trend hide-route" data-k="radius" role="group" aria-label="Distance maximum">
       <button type="button" data-v="3">3 km</button><button type="button" data-v="5">5 km</button><button type="button" data-v="10">10 km</button><button type="button" data-v="25">25 km</button><button type="button" class="far" data-v="50">50 km</button><button type="button" class="far" data-v="100">100 km</button></div>
     <label class="ck farck hide-trend hide-route"><input type="checkbox" id="farCk"> Chercher plus loin (jusqu'à 100 km)</label>
+    <label class="ck farck hide-trend"><input type="checkbox" id="openCk"> Seulement les stations ouvertes maintenant</label>
     <div class="seg hide-trend hide-route" data-k="sort" role="group" aria-label="Trier par">
       <button type="button" data-v="best">Meilleur choix</button><button type="button" data-v="price">Moins cher</button><button type="button" data-v="dist">Plus proche</button></div>
   </div>
@@ -299,16 +303,77 @@ const km = d => (d<10?fmt1(d):Math.round(d).toLocaleString('fr-CA'))+' km';
 const when = t => new Date(t).toLocaleString('fr-CA',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
 
 let S = [], TS = 0, OUT = [], gpsOk = false, showAll = false;
-let set = Object.assign({fuel:0,radius:5,sort:'best',costco:1,tank:50,cons:8,tab:'list',det:3}, store.get('set',{}));
+let set = Object.assign({fuel:0,radius:5,sort:'best',costco:1,tank:50,cons:8,tab:'list',det:3,openOnly:true}, store.get('set',{}));
 let pos = store.get('pos', null), home = store.get('home', null);
 if (pos && pos.label==='Ma position') pos.label='Dernière position';
+
+/* ---------- Heures d'ouverture ---------- */
+// Format OpenStreetMap simplifié (ex. « Mo-Fr 06:00-21:30; Sa-Su 06:00-20:30 », « 24/7 »). Format non reconnu = heures inconnues.
+const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+function parseOH(str){
+  str = String(str||'').trim(); if (!str) return null;
+  if (str==='24/7') return {always:true};
+  const week = [[],[],[],[],[],[],[]];
+  for (let rule of str.split(';')) {
+    rule = rule.trim(); if (!rule) continue;
+    const m = rule.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?,?)+)?\s*(.*)$/);
+    if (!m) return null;
+    const times = m[2].trim();
+    let days = [];
+    if (!m[1]) days = [0,1,2,3,4,5,6];
+    else for (const part of m[1].split(',').filter(Boolean)) {
+      if (part==='PH') continue;
+      const [a,b] = part.split('-'), ia = DAYS.indexOf(a), ib = b ? DAYS.indexOf(b) : ia;
+      if (ia<0 || ib<0) return null;
+      for (let i=ia;;i=(i+1)%7) { days.push(i); if (i===ib) break; }
+    }
+    if (!days.length) continue;
+    let spans = [];
+    if (/^(off|closed)$/i.test(times)) spans = [];
+    else if (times==='24/7') spans = [[0,1440]];
+    else for (const t of times.split(',')) {
+      const x = t.trim().match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/); if (!x) return null;
+      spans.push([+x[1]*60 + +x[2], +x[3]*60 + +x[4]]);
+    }
+    for (const d of days) week[d] = spans;
+  }
+  return {week};
+}
+const COSTCO_OH = parseOH('Mo-Fr 06:00-21:30; Sa-Su 06:00-20:30');
+function openState(oh, now){
+  if (!oh) return null;
+  if (oh.always) return {open:true, always:true};
+  now = now || new Date();
+  const d = now.getDay(), mins = now.getHours()*60 + now.getMinutes();
+  for (const [a,b] of oh.week[d]) {
+    if (a===0 && b>=1440) return {open:true, always:true};
+    if (b>a ? (mins>=a && mins<b) : mins>=a) return {open:true, closes:b%1440};
+  }
+  for (const [a,b] of oh.week[(d+6)%7]) if (b<=a && mins<b) return {open:true, closes:b};
+  for (let k=0;k<7;k++) {
+    const sp = oh.week[(d+k)%7].map(x=>x[0]).sort((x,y)=>x-y);
+    for (const a of sp) if (k>0 || a>mins) return {open:false, opens:a, inDays:k};
+  }
+  return {open:false};
+}
+const hm = m => `${Math.floor(m/60)} h${m%60 ? ' '+String(m%60).padStart(2,'0') : ''}`;
+function ohText(o){
+  const st = o.st; if (!st) return '';
+  const src = o.s.ohSrc==='costco' ? ' (horaire habituel Costco)' : '';
+  if (st.open) return st.always ? 'Ouvert 24 h sur 24' : `Ouvert · ferme à ${hm(st.closes)}${src}`;
+  if (st.opens==null) return 'Fermé';
+  const jour = st.inDays===0 ? '' : st.inDays===1 ? 'demain ' : `${['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'][(new Date().getDay()+st.inDays)%7]} `;
+  return `Fermé · ouvre ${jour}à ${hm(st.opens)}${src}`;
+}
 
 /* ---------- Données ---------- */
 function build(rows, ts){
   S = rows.map(r => {
     const a = r[2]||'', i = a.lastIndexOf(',');
     const city = i>=0 ? a.slice(i+1).trim() : '';
-    return {b:r[0], n:r[1], a, cp:r[3], lat:r[4], lon:r[5], p:[r[6],r[7],r[8]], rg:r[9]||'', city, cityN:norm(city), cpN:norm(r[3]).replace(/\s/g,'')};
+    const isCostco = /costco/.test(norm(r[0]+' '+r[1]));
+    const oh = isCostco ? COSTCO_OH : parseOH(r[10]);
+    return {b:r[0], n:r[1], a, cp:r[3], lat:r[4], lon:r[5], p:[r[6],r[7],r[8]], rg:r[9]||'', city, cityN:norm(city), cpN:norm(r[3]).replace(/\s/g,''), oh, ohSrc: isCostco ? 'costco' : (oh ? 'osm' : '')};
   });
   TS = ts;
   const seen = new Map();
@@ -364,15 +429,16 @@ function locate(q){
 function entry(s, d){
   const p0=s.p[set.fuel]; if (p0==null) return null;
   const L=+set.tank||50, C=+set.cons||8, r=DISC[norm(s.b)], disc=r ? r.c : 0, p=Math.max(0, p0-disc);
-  return {s, p, p0, disc, d, cost:p/100*(L+2*d*1.3*C/100)};
+  return {s, p, p0, disc, d, st:openState(s.oh), cost:p/100*(L+2*d*1.3*C/100)};
 }
+const hidden = o => set.openOnly && o.st && !o.st.open;
 function compute(){
   const L=+set.tank||50;
   const out=[];
   for (const s of S) {
     if (!set.costco && /costco/.test(norm(s.b+' '+s.n))) continue;
     const d=hav(pos.lat,pos.lon,s.lat,s.lon); if (d>set.radius) continue;
-    const o=entry(s,d); if (o) out.push(o);
+    const o=entry(s,d); if (o && !hidden(o)) out.push(o);
   }
   const by = {best:(a,b)=>a.cost-b.cost||a.d-b.d, price:(a,b)=>a.p-b.p||a.d-b.d, dist:(a,b)=>a.d-b.d||a.p-b.p}[set.sort];
   out.sort(by);
@@ -385,9 +451,15 @@ let DISC = store.get('disc', {});
 let HERO = null;
 const STAR = '<svg class="i" viewBox="0 0 24 24"><path d="M12 17.75l-6.17 3.24l1.18-6.87l-5-4.87l6.9-1l3.09-6.25l3.09 6.25l6.9 1l-5 4.87l1.18 6.87z"/></svg>';
 function starBtn(s){ const on=FAV.has(sid(s)); return `<button class="star${on?' on':''}" type="button" data-fav="${sid(s)}" aria-pressed="${on}" aria-label="${on?'Retirer des':'Ajouter aux'} favoris">${STAR}</button>`; }
+function tag(o){
+  const st=o.st; if (!st) return '';
+  if (!st.open) return ' <span class="ohtag shut">fermé</span>';
+  if (!st.always && st.closes!=null) { const n=new Date(), m=n.getHours()*60+n.getMinutes(), left=(st.closes-m+1440)%1440; if (left<=60) return ' <span class="ohtag soon">ferme bientôt</span>'; }
+  return '';
+}
 function row(o, avg){
   return `<li><a href="${maps(o.s)}" target="_blank" rel="noopener" aria-label="Itinéraire vers ${esc(title(o.s))}, ${esc(addr(o.s.a))}">
-    <div><div class="nm">${esc(title(o.s))}</div><div class="ad">${km(o.d)} · ${esc(addr(o.s.a))}</div></div>
+    <div><div class="nm">${esc(title(o.s))}${tag(o)}</div><div class="ad">${km(o.d)} · ${esc(addr(o.s.a))}</div></div>
     <div class="pr${o.p < avg-0.5 ? ' g' : ''}">${fmt1(o.p)}<small>${o.disc ? 'rabais −'+fmt1(o.disc)+' ¢' : money(o.cost)}</small></div></a>${starBtn(o.s)}</li>`;
 }
 const title = s => (s.b && norm(s.b)!=='aucun') ? s.b : (s.n||'Station');
@@ -399,7 +471,7 @@ const maps = s => `https://www.google.com/maps/dir/?api=1&destination=${s.lat},$
 function render(){
   for (const g of document.querySelectorAll('.seg[data-k]')) for (const b of g.children) b.setAttribute('aria-pressed', String(String(set[g.dataset.k])===b.dataset.v));
   $('costcoSw').setAttribute('aria-checked', String(!!set.costco));
-  document.body.classList.toggle('far', !!set.far); $('farCk').checked = !!set.far;
+  document.body.classList.toggle('far', !!set.far); $('farCk').checked = !!set.far; $('openCk').checked = !!set.openOnly;
   if (document.activeElement!==$('tank')) $('tank').value=set.tank;
   if (document.activeElement!==$('cons')) $('cons').value=set.cons;
   $('homeBtn').hidden = !home || (pos && home.label===pos.label);
@@ -423,6 +495,7 @@ function render(){
       <p class="lead">${lead}</p>
       <p class="name">${esc(title(t.s))} ${starBtn(t.s)}</p>
       <p class="addr">${esc(addr(t.s.a))}</p>
+      ${ohText(t) ? `<p class="oh${t.st.open?'':' shut'}">${ohText(t)}</p>` : ''}
       <p class="price">${fmt1(t.p)}<small> ¢/L</small></p>
       ${t.disc ? `<p class="rab">Avec ton rabais de ${fmt1(t.disc)} ¢ (affiché ${fmt1(t.p0)} ¢)</p>` : ''}
       <p class="gain">${km(t.d)} · ${gain}</p>
@@ -923,7 +996,7 @@ function routeCandidates(){
     }
     if (best>det) continue;
     const detour = 2*best*1.3;
-    const o = entry(s, best); if (!o) continue;
+    const o = entry(s, best); if (!o || hidden(o)) continue;
     o.dist = best; o.detour = detour; o.along = along;
     out.push(o);
   }
@@ -932,7 +1005,7 @@ function routeCandidates(){
 const gmapsVia = (s) => `https://www.google.com/maps/dir/?api=1&origin=${ROUTE.from.lat},${ROUTE.from.lon}&destination=${ROUTE.to.lat},${ROUTE.to.lon}&waypoints=${s.lat},${s.lon}&travelmode=driving`;
 function rtRow(o, avg){
   return `<li><a href="${gmapsVia(o.s)}" target="_blank" rel="noopener" aria-label="Itinéraire avec arrêt chez ${esc(title(o.s))}">
-    <div><div class="nm">${esc(title(o.s))}</div><div class="ad">à ${Math.round(o.along)} km · détour ${fmt1(o.detour)} km · ${esc(addr(o.s.a))}</div></div>
+    <div><div class="nm">${esc(title(o.s))}${tag(o)}</div><div class="ad">à ${Math.round(o.along)} km · détour ${fmt1(o.detour)} km · ${esc(addr(o.s.a))}</div></div>
     <div class="pr${o.p < avg-0.5 ? ' g' : ''}">${fmt1(o.p)}<small>${o.disc ? 'rabais −'+fmt1(o.disc)+' ¢' : money(o.cost)}</small></div></a>${starBtn(o.s)}</li>`;
 }
 function renderRoute(){
@@ -949,6 +1022,7 @@ function renderRoute(){
     <p class="lead">Arrête-toi chez</p>
     <p class="name">${esc(title(t.s))} ${starBtn(t.s)}</p>
     <p class="addr">${esc(addr(t.s.a))}</p>
+    ${ohText(t) ? `<p class="oh${t.st.open?'':' shut'}">${ohText(t)}</p>` : ''}
     <p class="price">${fmt1(t.p)}<small> ¢/L</small></p>
     ${t.disc ? `<p class="rab">Avec ton rabais de ${fmt1(t.disc)} ¢ (affiché ${fmt1(t.p0)} ¢)</p>` : ''}
     <p class="gain">à ${Math.round(t.along)} km de ton départ · détour ≈ ${fmt1(t.detour)} km${net>=0.05 ? ` · ${money(net)} de moins qu'une station moyenne sur ta route` : ''}</p>
@@ -1025,6 +1099,7 @@ for (const g of document.querySelectorAll('.seg[data-k]')) g.addEventListener('c
   const k=g.dataset.k; set[k] = k==='sort' ? b.dataset.v : +b.dataset.v; showAll=false;
   store.set('set',set); render();
 });
+$('openCk').addEventListener('change', e=>{ set.openOnly = e.target.checked; showAll=false; store.set('set',set); render(); });
 $('farCk').addEventListener('change', e=>{ set.far = e.target.checked; if (!set.far && set.radius>25) set.radius = 25; showAll=false; store.set('set',set); render(); });
 $('costcoSw').addEventListener('click', ()=>{ set.costco = set.costco ? 0 : 1; store.set('set',set); render(); });
 for (const id of ['tank','cons']) $(id).addEventListener('input', e=>{ const v=parseFloat(e.target.value); if (v>0) { set[id]=v; if (id==='tank') { set.car=''; set.carGen=''; carNote(); } store.set('set',set); render(); } });
@@ -1044,7 +1119,7 @@ async function load(){
   else { $('fresh').textContent='Aucun prix chargé'; $('impLbl').hidden=false; $('status').textContent="Importe le fichier Excel des stations de la Régie pour commencer."; }
 }
 document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && Date.now()-loadedAt > 5*60e3) load(); });
-setInterval(()=>{ fresh(); if (!document.hidden && Date.now()-loadedAt > 5*60e3) load(); }, 60e3);
+setInterval(()=>{ fresh(); if (set.openOnly) render(); if (!document.hidden && Date.now()-loadedAt > 5*60e3) load(); }, 60e3);
 showTab(['list','route','map','trend','alert'].includes(set.tab) ? set.tab : 'list');
 load().then(()=>{
   gpsSetup();
