@@ -1,18 +1,20 @@
 name: Mise à jour des prix
 
-# GitHub lance les tâches programmées environ une fois par heure, pas plus souvent.
-# Chaque lancement fait donc 4 mises à jour espacées de 15 minutes.
+# GitHub lance les tâches programmées seulement toutes les 60 à 90 minutes environ, à des heures irrégulières.
+# Chaque lancement fait donc une série de mises à jour toutes les 10 minutes (à 1 min 30 après chaque
+# fichier de la Régie) pendant environ 2 heures. Le lancement suivant attend son tour et prend le relais
+# dès que la série se termine : il n'y a pas de trou entre deux lancements.
 on:
   schedule:
     - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       tours:
-        description: "Nombre de mises à jour (1 à 4)"
-        default: "4"
-      pause:
+        description: "Nombre de mises à jour (1 à 12)"
+        default: "12"
+      cadence:
         description: "Minutes entre les mises à jour"
-        default: "14"
+        default: "10"
   push:
     branches: [main]
 
@@ -21,20 +23,20 @@ permissions:
   pages: write
   id-token: write
 
-# Une nouvelle version de l'appli (push) interrompt la série de mises à jour en cours
-# pour être publiée tout de suite; la série reprend au prochain lancement programmé.
+# Une nouvelle version de l'appli (push) interrompt la série en cours pour être publiée tout de suite,
+# puis continue elle-même la série complète.
 concurrency:
   group: pages
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  TOURS: ${{ inputs.tours || (github.event_name == 'push' && '1') || '4' }}
-  PAUSE: ${{ inputs.pause || '14' }}
+  TOURS: ${{ inputs.tours || '12' }}
+  CADENCE: ${{ inputs.cadence || '10' }}
 
 jobs:
   maj:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 150
     environment:
       name: github-pages
       url: ${{ steps.dep1.outputs.page_url || steps.dep1b.outputs.page_url }}
@@ -49,6 +51,8 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
+      # En cas d'erreur réseau de GitHub : le paquet est renvoyé sous un autre nom après 45 s,
+      # et la publication est réessayée après 60 s. Une erreur n'arrête pas les mises à jour suivantes.
       # Mise à jour 1
       - name: Prix 1
         run: bash scripts/tour.sh
@@ -57,7 +61,6 @@ jobs:
         continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with: { path: site, name: pages-1 }
-      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
       - name: Attente paquet 1
         if: steps.pk1.outcome == 'failure'
         run: sleep 45
@@ -73,7 +76,6 @@ jobs:
         continue-on-error: true
         uses: actions/deploy-pages@v4
         with: { artifact_name: "${{ steps.pk1.outcome == 'success' && 'pages-1' || 'pages-1b' }}" }
-      # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 1
         if: steps.dep1.outcome == 'failure'
         run: sleep 60
@@ -86,14 +88,13 @@ jobs:
       # Mise à jour 2
       - name: Prix 2
         if: fromJSON(env.TOURS) >= 2
-        run: sleep $((PAUSE*60)) && bash scripts/tour.sh
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
       - name: Paquet 2
         id: pk2
         if: fromJSON(env.TOURS) >= 2
         continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with: { path: site, name: pages-2 }
-      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
       - name: Attente paquet 2
         if: fromJSON(env.TOURS) >= 2 && steps.pk2.outcome == 'failure'
         run: sleep 45
@@ -109,7 +110,6 @@ jobs:
         continue-on-error: true
         uses: actions/deploy-pages@v4
         with: { artifact_name: "${{ steps.pk2.outcome == 'success' && 'pages-2' || 'pages-2b' }}" }
-      # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 2
         if: fromJSON(env.TOURS) >= 2 && steps.dep2.outcome == 'failure'
         run: sleep 60
@@ -122,14 +122,13 @@ jobs:
       # Mise à jour 3
       - name: Prix 3
         if: fromJSON(env.TOURS) >= 3
-        run: sleep $((PAUSE*60)) && bash scripts/tour.sh
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
       - name: Paquet 3
         id: pk3
         if: fromJSON(env.TOURS) >= 3
         continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with: { path: site, name: pages-3 }
-      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
       - name: Attente paquet 3
         if: fromJSON(env.TOURS) >= 3 && steps.pk3.outcome == 'failure'
         run: sleep 45
@@ -145,7 +144,6 @@ jobs:
         continue-on-error: true
         uses: actions/deploy-pages@v4
         with: { artifact_name: "${{ steps.pk3.outcome == 'success' && 'pages-3' || 'pages-3b' }}" }
-      # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 3
         if: fromJSON(env.TOURS) >= 3 && steps.dep3.outcome == 'failure'
         run: sleep 60
@@ -158,14 +156,13 @@ jobs:
       # Mise à jour 4
       - name: Prix 4
         if: fromJSON(env.TOURS) >= 4
-        run: sleep $((PAUSE*60)) && bash scripts/tour.sh
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
       - name: Paquet 4
         id: pk4
         if: fromJSON(env.TOURS) >= 4
         continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with: { path: site, name: pages-4 }
-      # Le serveur de GitHub coupe parfois l'envoi du paquet : on attend puis on renvoie sous un autre nom.
       - name: Attente paquet 4
         if: fromJSON(env.TOURS) >= 4 && steps.pk4.outcome == 'failure'
         run: sleep 45
@@ -181,7 +178,6 @@ jobs:
         continue-on-error: true
         uses: actions/deploy-pages@v4
         with: { artifact_name: "${{ steps.pk4.outcome == 'success' && 'pages-4' || 'pages-4b' }}" }
-      # GitHub ne trouve parfois pas le paquet qui vient d'être créé : on réessaie une minute plus tard.
       - name: Attente 4
         if: fromJSON(env.TOURS) >= 4 && steps.dep4.outcome == 'failure'
         run: sleep 60
@@ -191,11 +187,283 @@ jobs:
         continue-on-error: true
         uses: actions/deploy-pages@v4
         with: { artifact_name: "${{ steps.pk4.outcome == 'success' && 'pages-4' || 'pages-4b' }}" }
+      # Mise à jour 5
+      - name: Prix 5
+        if: fromJSON(env.TOURS) >= 5
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 5
+        id: pk5
+        if: fromJSON(env.TOURS) >= 5
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-5 }
+      - name: Attente paquet 5
+        if: fromJSON(env.TOURS) >= 5 && steps.pk5.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 5 (nouvel essai)
+        id: pk5b
+        if: fromJSON(env.TOURS) >= 5 && steps.pk5.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-5b }
+      - name: Publication 5
+        id: dep5
+        if: fromJSON(env.TOURS) >= 5 && (steps.pk5.outcome == 'success' || steps.pk5b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk5.outcome == 'success' && 'pages-5' || 'pages-5b' }}" }
+      - name: Attente 5
+        if: fromJSON(env.TOURS) >= 5 && steps.dep5.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 5
+        id: dep5b
+        if: fromJSON(env.TOURS) >= 5 && steps.dep5.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk5.outcome == 'success' && 'pages-5' || 'pages-5b' }}" }
+      # Mise à jour 6
+      - name: Prix 6
+        if: fromJSON(env.TOURS) >= 6
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 6
+        id: pk6
+        if: fromJSON(env.TOURS) >= 6
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-6 }
+      - name: Attente paquet 6
+        if: fromJSON(env.TOURS) >= 6 && steps.pk6.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 6 (nouvel essai)
+        id: pk6b
+        if: fromJSON(env.TOURS) >= 6 && steps.pk6.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-6b }
+      - name: Publication 6
+        id: dep6
+        if: fromJSON(env.TOURS) >= 6 && (steps.pk6.outcome == 'success' || steps.pk6b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk6.outcome == 'success' && 'pages-6' || 'pages-6b' }}" }
+      - name: Attente 6
+        if: fromJSON(env.TOURS) >= 6 && steps.dep6.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 6
+        id: dep6b
+        if: fromJSON(env.TOURS) >= 6 && steps.dep6.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk6.outcome == 'success' && 'pages-6' || 'pages-6b' }}" }
+      # Mise à jour 7
+      - name: Prix 7
+        if: fromJSON(env.TOURS) >= 7
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 7
+        id: pk7
+        if: fromJSON(env.TOURS) >= 7
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-7 }
+      - name: Attente paquet 7
+        if: fromJSON(env.TOURS) >= 7 && steps.pk7.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 7 (nouvel essai)
+        id: pk7b
+        if: fromJSON(env.TOURS) >= 7 && steps.pk7.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-7b }
+      - name: Publication 7
+        id: dep7
+        if: fromJSON(env.TOURS) >= 7 && (steps.pk7.outcome == 'success' || steps.pk7b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk7.outcome == 'success' && 'pages-7' || 'pages-7b' }}" }
+      - name: Attente 7
+        if: fromJSON(env.TOURS) >= 7 && steps.dep7.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 7
+        id: dep7b
+        if: fromJSON(env.TOURS) >= 7 && steps.dep7.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk7.outcome == 'success' && 'pages-7' || 'pages-7b' }}" }
+      # Mise à jour 8
+      - name: Prix 8
+        if: fromJSON(env.TOURS) >= 8
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 8
+        id: pk8
+        if: fromJSON(env.TOURS) >= 8
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-8 }
+      - name: Attente paquet 8
+        if: fromJSON(env.TOURS) >= 8 && steps.pk8.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 8 (nouvel essai)
+        id: pk8b
+        if: fromJSON(env.TOURS) >= 8 && steps.pk8.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-8b }
+      - name: Publication 8
+        id: dep8
+        if: fromJSON(env.TOURS) >= 8 && (steps.pk8.outcome == 'success' || steps.pk8b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk8.outcome == 'success' && 'pages-8' || 'pages-8b' }}" }
+      - name: Attente 8
+        if: fromJSON(env.TOURS) >= 8 && steps.dep8.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 8
+        id: dep8b
+        if: fromJSON(env.TOURS) >= 8 && steps.dep8.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk8.outcome == 'success' && 'pages-8' || 'pages-8b' }}" }
+      # Mise à jour 9
+      - name: Prix 9
+        if: fromJSON(env.TOURS) >= 9
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 9
+        id: pk9
+        if: fromJSON(env.TOURS) >= 9
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-9 }
+      - name: Attente paquet 9
+        if: fromJSON(env.TOURS) >= 9 && steps.pk9.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 9 (nouvel essai)
+        id: pk9b
+        if: fromJSON(env.TOURS) >= 9 && steps.pk9.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-9b }
+      - name: Publication 9
+        id: dep9
+        if: fromJSON(env.TOURS) >= 9 && (steps.pk9.outcome == 'success' || steps.pk9b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk9.outcome == 'success' && 'pages-9' || 'pages-9b' }}" }
+      - name: Attente 9
+        if: fromJSON(env.TOURS) >= 9 && steps.dep9.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 9
+        id: dep9b
+        if: fromJSON(env.TOURS) >= 9 && steps.dep9.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk9.outcome == 'success' && 'pages-9' || 'pages-9b' }}" }
+      # Mise à jour 10
+      - name: Prix 10
+        if: fromJSON(env.TOURS) >= 10
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 10
+        id: pk10
+        if: fromJSON(env.TOURS) >= 10
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-10 }
+      - name: Attente paquet 10
+        if: fromJSON(env.TOURS) >= 10 && steps.pk10.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 10 (nouvel essai)
+        id: pk10b
+        if: fromJSON(env.TOURS) >= 10 && steps.pk10.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-10b }
+      - name: Publication 10
+        id: dep10
+        if: fromJSON(env.TOURS) >= 10 && (steps.pk10.outcome == 'success' || steps.pk10b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk10.outcome == 'success' && 'pages-10' || 'pages-10b' }}" }
+      - name: Attente 10
+        if: fromJSON(env.TOURS) >= 10 && steps.dep10.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 10
+        id: dep10b
+        if: fromJSON(env.TOURS) >= 10 && steps.dep10.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk10.outcome == 'success' && 'pages-10' || 'pages-10b' }}" }
+      # Mise à jour 11
+      - name: Prix 11
+        if: fromJSON(env.TOURS) >= 11
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 11
+        id: pk11
+        if: fromJSON(env.TOURS) >= 11
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-11 }
+      - name: Attente paquet 11
+        if: fromJSON(env.TOURS) >= 11 && steps.pk11.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 11 (nouvel essai)
+        id: pk11b
+        if: fromJSON(env.TOURS) >= 11 && steps.pk11.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-11b }
+      - name: Publication 11
+        id: dep11
+        if: fromJSON(env.TOURS) >= 11 && (steps.pk11.outcome == 'success' || steps.pk11b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk11.outcome == 'success' && 'pages-11' || 'pages-11b' }}" }
+      - name: Attente 11
+        if: fromJSON(env.TOURS) >= 11 && steps.dep11.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 11
+        id: dep11b
+        if: fromJSON(env.TOURS) >= 11 && steps.dep11.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk11.outcome == 'success' && 'pages-11' || 'pages-11b' }}" }
+      # Mise à jour 12
+      - name: Prix 12
+        if: fromJSON(env.TOURS) >= 12
+        run: bash scripts/attendre.sh && bash scripts/tour.sh
+      - name: Paquet 12
+        id: pk12
+        if: fromJSON(env.TOURS) >= 12
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-12 }
+      - name: Attente paquet 12
+        if: fromJSON(env.TOURS) >= 12 && steps.pk12.outcome == 'failure'
+        run: sleep 45
+      - name: Paquet 12 (nouvel essai)
+        id: pk12b
+        if: fromJSON(env.TOURS) >= 12 && steps.pk12.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with: { path: site, name: pages-12b }
+      - name: Publication 12
+        id: dep12
+        if: fromJSON(env.TOURS) >= 12 && (steps.pk12.outcome == 'success' || steps.pk12b.outcome == 'success')
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk12.outcome == 'success' && 'pages-12' || 'pages-12b' }}" }
+      - name: Attente 12
+        if: fromJSON(env.TOURS) >= 12 && steps.dep12.outcome == 'failure'
+        run: sleep 60
+      - name: Nouvel essai 12
+        id: dep12b
+        if: fromJSON(env.TOURS) >= 12 && steps.dep12.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with: { artifact_name: "${{ steps.pk12.outcome == 'success' && 'pages-12' || 'pages-12b' }}" }
 
       # Échec seulement si aucune publication n'a réussi pendant tout le lancement.
       - name: Bilan
         if: always()
         run: |
-          ok="${{ steps.dep1.outcome == 'success' || steps.dep1b.outcome == 'success' || steps.dep2.outcome == 'success' || steps.dep2b.outcome == 'success' || steps.dep3.outcome == 'success' || steps.dep3b.outcome == 'success' || steps.dep4.outcome == 'success' || steps.dep4b.outcome == 'success' }}"
+          ok="${{ steps.dep1.outcome == 'success' || steps.dep1b.outcome == 'success' || steps.dep2.outcome == 'success' || steps.dep2b.outcome == 'success' || steps.dep3.outcome == 'success' || steps.dep3b.outcome == 'success' || steps.dep4.outcome == 'success' || steps.dep4b.outcome == 'success' || steps.dep5.outcome == 'success' || steps.dep5b.outcome == 'success' || steps.dep6.outcome == 'success' || steps.dep6b.outcome == 'success' || steps.dep7.outcome == 'success' || steps.dep7b.outcome == 'success' || steps.dep8.outcome == 'success' || steps.dep8b.outcome == 'success' || steps.dep9.outcome == 'success' || steps.dep9b.outcome == 'success' || steps.dep10.outcome == 'success' || steps.dep10b.outcome == 'success' || steps.dep11.outcome == 'success' || steps.dep11b.outcome == 'success' || steps.dep12.outcome == 'success' || steps.dep12b.outcome == 'success' }}"
           if [ "$ok" != "true" ]; then echo "Aucune publication réussie"; exit 1; fi
           echo "Au moins une publication réussie"

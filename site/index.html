@@ -268,7 +268,7 @@ code{background:var(--soft);border-radius:6px;padding:1px 6px;overflow-wrap:anyw
           <li><button class="b o" id="alTest" type="button">Envoyer une notification test</button></li>
         </ol>
       </div>
-      <p class="note">Vérifiée aux 15 minutes, une seule notification par baisse. Ta zone est arrondie à environ 2 km; aucun nom ni courriel n'est envoyé. L'alerte reste active tant que tu ouvres l'appli au moins une fois tous les 3 mois.</p>
+      <p class="note">Vérifiée aux 10 minutes, une seule notification par baisse. Ta zone est arrondie à environ 2 km; aucun nom ni courriel n'est envoyé. L'alerte reste active tant que tu ouvres l'appli au moins une fois tous les 3 mois.</p>
     </div>
   </div>
 
@@ -679,7 +679,7 @@ function saveAlerte(){ store.set('alerte', alerte); }
 async function pushAlerte(silent){
   try {
     await publish(cfgOf(alerte)); alerte.sent=Date.now(); saveAlerte();
-    if (!silent) $('alMsg').textContent = `Alerte activée : notification quand le ${FUEL[alerte.f].toLowerCase()} est à ${fmt1(alerte.s)} ¢ ou moins à ${alerte.r} km de ${alerte.zone}. Prise en compte d'ici 15 minutes.`;
+    if (!silent) $('alMsg').textContent = `Alerte activée : notification quand le ${FUEL[alerte.f].toLowerCase()} est à ${fmt1(alerte.s)} ¢ ou moins à ${alerte.r} km de ${alerte.zone}. Prise en compte d'ici 10 minutes.`;
   } catch(e) { if (!silent) $('alMsg').textContent = "Impossible d'enregistrer l'alerte. Vérifie ta connexion et réessaie."; }
 }
 $('alOn').addEventListener('click', async ()=>{
@@ -1118,8 +1118,8 @@ async function load(){
   else if (rows) setData(rows, ts || Date.now(), false);
   else { $('fresh').textContent='Aucun prix chargé'; $('impLbl').hidden=false; $('status').textContent="Importe le fichier Excel des stations de la Régie pour commencer."; }
 }
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && Date.now()-loadedAt > 5*60e3) load(); });
-setInterval(()=>{ fresh(); if (set.openOnly) render(); if (!document.hidden && Date.now()-loadedAt > 5*60e3) load(); }, 60e3);
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && Date.now()-loadedAt > 60e3) load(); });
+setInterval(()=>{ fresh(); if (set.openOnly) render(); if (!document.hidden && Date.now()-loadedAt > 2*60e3 - 5e3) load(); }, 60e3);
 showTab(['list','route','map','trend','alert'].includes(set.tab) ? set.tab : 'list');
 load().then(()=>{
   gpsSetup();
