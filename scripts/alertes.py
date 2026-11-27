@@ -133,6 +133,9 @@ def main(prix_frais):
             meilleur = None
             for s in stations:
                 p = s[6 + a["f"]]
+                vu = s[11].get(str(a["f"])) if len(s) > 11 and s[11] else None
+                if vu:
+                    p = vu[0]  # prix vu à la pompe et signalé : plus fiable que celui déclaré
                 if p is None:
                     continue
                 d = distance(a["lat"], a["lon"], s[4], s[5])

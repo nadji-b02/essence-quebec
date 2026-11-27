@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Une mise à jour : prix de la Régie, historique, alertes, puis enregistrement des données.
+# Une mise à jour : prix de la Régie, heures d'ouverture, prix signalés, historique, alertes,
+# puis enregistrement des données.
 set -u
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -7,6 +8,7 @@ git pull -q --rebase --autostash origin main || true
 
 if python scripts/maj.py site/stations.json; then etat=success; else etat=failure; fi
 python scripts/heures.py || true
+python scripts/signalements.py || true
 python scripts/historique.py || true
 python scripts/alertes.py "$etat" || true
 

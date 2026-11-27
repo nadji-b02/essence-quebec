@@ -89,6 +89,14 @@ h3{font-size:14px;font-weight:600;color:var(--mute);margin:26px 0 4px}
 .hero .oh{margin:4px 0 0;font-size:14px;color:var(--gtext);font-weight:500}.hero .oh.shut{color:var(--red)}
 .ohtag{font-size:12px;font-weight:600;border-radius:6px;padding:1px 6px;vertical-align:1px}
 .ohtag.shut{background:light-dark(#fee2e2,#3b1414);color:var(--red)}.ohtag.soon{background:light-dark(#fef3c7,#3a2c0a);color:var(--amber)}
+.hero .vu{margin:14px 0 0;font-size:13px;color:var(--mute);text-align:center}.hero .vu.warn{color:var(--amber)}
+.hero .lnk{display:block;margin:10px auto 0;background:none;border:0;padding:6px;font:inherit;font-size:13px;color:var(--mute);text-decoration:underline;cursor:pointer}
+.sigf{margin-top:8px;font-size:14px}.sigf label{display:block;color:var(--ink)}
+.sigrow{display:flex;gap:8px;margin-top:6px}.sigrow input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--ink)}
+.sigrow .b{width:auto;margin:0;padding:10px 16px}
+.sigerr{color:var(--red);font-size:13px;margin:6px 0 0}.sigerr:empty{display:none}
+.sigf .fine{font-size:12px;color:var(--mute);margin:8px 0 0;line-height:1.4}
+.ohtag.rep{background:light-dark(#e0ecff,#14233d);color:light-dark(#1d4ed8,#93c5fd)}
 .hero .rab{margin:6px 0 0;font-size:14px;color:var(--mute)}
 .hero .share{width:100%;margin-top:10px}
 .ac{position:relative;flex:1 1 180px}.ac input{width:100%}
@@ -290,6 +298,8 @@ code{background:var(--soft);border-radius:6px;padding:1px 6px;overflow-wrap:anyw
 const FUEL = ['Régulier','Super','Diesel'];
 const NTFY = 'https://ntfy.sh';
 const REGISTRE = 'essence-qc-reg-k7q2m9x4p1';
+const SIGNAL = 'essence-qc-sig-r4n8w2v6t3';   // prix vus à la pompe, partagés avec tout le monde
+const SIG_DUREE = 48*3600, STALE_JOURS = 3, STALE_ECART = 5;
 const $ = id => document.getElementById(id);
 const norm = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -373,9 +383,21 @@ function build(rows, ts){
     const city = i>=0 ? a.slice(i+1).trim() : '';
     const isCostco = /costco/.test(norm(r[0]+' '+r[1]));
     const oh = isCostco ? COSTCO_OH : parseOH(r[10]);
-    return {b:r[0], n:r[1], a, cp:r[3], lat:r[4], lon:r[5], p:[r[6],r[7],r[8]], rg:r[9]||'', city, cityN:norm(city), cpN:norm(r[3]).replace(/\s/g,''), oh, ohSrc: isCostco ? 'costco' : (oh ? 'osm' : '')};
+    return {b:r[0], n:r[1], a, cp:r[3], lat:r[4], lon:r[5], p:[r[6],r[7],r[8]], rg:r[9]||'', city, cityN:norm(city), cpN:norm(r[3]).replace(/\s/g,''), oh, ohSrc: isCostco ? 'costco' : (oh ? 'osm' : ''), sig: r[11]||null, since: r[12]||null};
   });
   TS = ts;
+  applyMySig();
+  // Prix déclaré inchangé depuis plusieurs jours : on le compare aux stations à 5 km ou moins.
+  const now = Date.now()/1000;
+  for (const s of S) {
+    s.ref = null;
+    if (!s.since || now - s.since < STALE_JOURS*86400) continue;
+    s.ref = [0,1,2].map(f => {
+      if (s.p[f]==null) return null;
+      const v = S.filter(x => x!==s && x.p[f]!=null && Math.abs(x.lat-s.lat)<0.05 && Math.abs(x.lon-s.lon)<0.07 && hav(s.lat,s.lon,x.lat,x.lon)<=5).map(x=>x.p[f]).sort((a,b)=>a-b);
+      return v.length>=3 ? v[v.length>>1] : null;
+    });
+  }
   const seen = new Map();
   for (const s of S) if (s.cityN && (!seen.has(s.cityN) || seen.get(s.cityN)===seen.get(s.cityN).toUpperCase())) seen.set(s.cityN, s.city);
   $('cities').innerHTML = [...seen.values()].sort((x,y)=>x.localeCompare(y,'fr')).map(c=>`<option value="${esc(c)}">`).join('');
@@ -427,9 +449,37 @@ function locate(q){
   return centroid(m, nice+' (centre)');
 }
 function entry(s, d){
-  const p0=s.p[set.fuel]; if (p0==null) return null;
+  const f=set.fuel, pr=s.p[f], rep=s.sig && s.sig[f], p0 = rep ? rep[0] : pr; if (p0==null) return null;
   const L=+set.tank||50, C=+set.cons||8, r=DISC[norm(s.b)], disc=r ? r.c : 0, p=Math.max(0, p0-disc);
-  return {s, p, p0, disc, d, st:openState(s.oh), cost:p/100*(L+2*d*1.3*C/100)};
+  const stale = !rep && s.ref && s.ref[f]!=null && pr <= s.ref[f]-STALE_ECART ? Math.floor((Date.now()/1000 - s.since)/86400) : 0;
+  return {s, p, p0, pr, rep, stale, disc, d, st:openState(s.oh), cost:p/100*(L+2*d*1.3*C/100)};
+}
+/* ---------- Prix signalés ---------- */
+let MYSIG = store.get('sig', {});
+function applyMySig(){
+  const now = Date.now()/1000, byK = new Map(S.map(s=>[sid(s), s]));
+  for (const k of Object.keys(MYSIG)) {
+    const s = byK.get(k);
+    for (const f of Object.keys(MYSIG[k])) {
+      const [p, t, regie] = MYSIG[k][f];
+      const srv = s && s.sig && s.sig[f];
+      if (!s || now-t > SIG_DUREE || Math.abs((s.p[f]??-1)-(regie??-1))>=0.05 || (srv && srv[1] >= t-60)) { delete MYSIG[k][f]; continue; }
+      if (p===null) { if (s.sig) { s.sig = {...s.sig}; delete s.sig[f]; } }   // confirmation du prix de la Régie
+      else s.sig = {...(s.sig||{}), [f]: [p, t, regie]};
+    }
+    if (!Object.keys(MYSIG[k]).length) delete MYSIG[k];
+  }
+  store.set('sig', MYSIG);
+}
+const agoS = t => { const m = Math.max(0, Math.round(Date.now()/6e4 - t/60)); return m<1 ? "à l'instant" : m<60 ? `il y a ${m} min` : `il y a ${Math.floor(m/60)} h`; };
+function sigBlock(t){
+  const info = t.rep ? `<p class="vu">Prix vu à la pompe, signalé ${agoS(t.rep[1])}. La Régie indique ${t.pr!=null ? fmt1(t.pr)+' ¢' : 'aucun prix'}.</p>`
+    : t.stale ? `<p class="vu warn">Prix déclaré à la Régie inchangé depuis ${t.stale} jours, bien plus bas qu'autour : il n'est peut-être pas à jour.</p>` : '';
+  return info + `<button class="lnk" type="button" data-sig>Le prix à la pompe est différent ?</button>
+    <form class="sigf" hidden><label>Prix affiché à la pompe (${FUEL[set.fuel].toLowerCase()})
+      <span class="sigrow"><input name="p" inputmode="decimal" autocomplete="off" placeholder="ex. ${fmt1(t.p0)}" aria-label="Prix vu à la pompe, en cents le litre"><button class="b" type="submit">Envoyer</button></span></label>
+      <p class="sigerr" role="alert"></p>
+      <p class="fine">Le prix corrigé sera visible par tous d'ici 10 minutes, jusqu'à ce que la station mette son prix à jour à la Régie (48 h au plus). Si ça se répète, signale-le aussi à la Régie : bouton « signaler un prix différent » sur la fiche de la station, sur <a href="https://regieessencequebec.ca" target="_blank" rel="noopener">regieessencequebec.ca</a>.</p></form>`;
 }
 const hidden = o => set.openOnly && o.st && !o.st.open;
 function compute(){
@@ -452,6 +502,9 @@ let HERO = null;
 const STAR = '<svg class="i" viewBox="0 0 24 24"><path d="M12 17.75l-6.17 3.24l1.18-6.87l-5-4.87l6.9-1l3.09-6.25l3.09 6.25l6.9 1l-5 4.87l1.18 6.87z"/></svg>';
 function starBtn(s){ const on=FAV.has(sid(s)); return `<button class="star${on?' on':''}" type="button" data-fav="${sid(s)}" aria-pressed="${on}" aria-label="${on?'Retirer des':'Ajouter aux'} favoris">${STAR}</button>`; }
 function tag(o){
+  return (o.rep ? ' <span class="ohtag rep">prix signalé</span>' : o.stale ? ' <span class="ohtag soon">à vérifier</span>' : '') + ohTag(o);
+}
+function ohTag(o){
   const st=o.st; if (!st) return '';
   if (!st.open) return ' <span class="ohtag shut">fermé</span>';
   if (!st.always && st.closes!=null) { const n=new Date(), m=n.getHours()*60+n.getMinutes(), left=(st.closes-m+1440)%1440; if (left<=60) return ' <span class="ohtag soon">ferme bientôt</span>'; }
@@ -485,7 +538,7 @@ function render(){
     $('hero').innerHTML = `<p class="empty">Aucune station n'affiche de ${FUEL[set.fuel].toLowerCase()} à ${set.radius} km ou moins. Choisis une plus grande distance.</p>`;
     $('list').innerHTML=''; $('lh').hidden=true; $('lsub').textContent=''; $('moreBtn').hidden=true; $('favList').innerHTML=''; $('fh').hidden=true;
   } else {
-    const t=out[0];
+    const t = out.find(o=>!o.stale) || out[0];
     const near = out.reduce((a,o)=>o.d<a.d?o:a, out[0]), net = near.cost - t.cost;
     const gain = near===t ? 'c\'est aussi la plus proche'
       : net>=0.05 ? `tu sauves ${money(net)} vs la plus proche (${esc(title(near.s))}, ${km(near.d)}), trajet compris`
@@ -501,12 +554,13 @@ function render(){
       <p class="gain">${km(t.d)} · ${gain}</p>
       <a class="b go" href="${maps(t.s)}" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M12 18.5l7.3 2.5a.5.5 0 0 0 .6-.7L12 3l-7.9 17.3a.5.5 0 0 0 .6.7z"/></svg>Y aller</a>
       <button class="b o share" id="shareBtn" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="M8 7l4-4l4 4"/></svg>Envoyer à un ami</button>
-      <p class="cost">Plein de ${L} L : ${money(t.cost)}${set.car ? ' · '+esc(set.car) : ''} · <a href="#veh" style="color:inherit">modifier</a></p></div>`;
+      <p class="cost">Plein de ${L} L : ${money(t.cost)}${set.car ? ' · '+esc(set.car) : ''} · <a href="#veh" style="color:inherit">modifier</a></p>
+      ${sigBlock(t)}</div>`;
     HERO = t;
     const favs = S.filter(s=>FAV.has(sid(s)) && s!==t.s).map(s=>entry(s, hav(pos.lat,pos.lon,s.lat,s.lon))).filter(Boolean).sort((a,b)=>a.cost-b.cost);
     $('fh').hidden = !favs.length;
     $('favList').innerHTML = favs.map(o=>row(o, avg)).join('');
-    const rest = out.slice(1).filter(o=>!FAV.has(sid(o.s))).slice(0, 60), shown = showAll ? rest : rest.slice(0, 8);
+    const rest = out.filter(o=>o!==t && !FAV.has(sid(o.s))).slice(0, 60), shown = showAll ? rest : rest.slice(0, 8);
     $('lh').hidden = !rest.length;
     $('lsub').textContent = '';
     $('list').innerHTML = shown.map(o=>row(o, avg)).join('');
@@ -960,7 +1014,7 @@ $('plAdd').addEventListener('click', async ()=>{
 renderPlaces();
 
 /* ---------- Trajet ---------- */
-let ROUTE = store.get('route', null);
+let ROUTE = store.get('route', null), RTHERO = null;
 async function getRoute(a, b){
   try {
     const ctl = new AbortController(); const tm = setTimeout(()=>ctl.abort(), 12000);
@@ -1017,7 +1071,7 @@ function renderRoute(){
   const dur = ROUTE.min ? ` · ${Math.floor(ROUTE.min/60)} h ${String(Math.round(ROUTE.min%60)).padStart(2,'0')}` : '';
   $('rtNote').textContent = `Trajet ${ROUTE.from.label} → ${ROUTE.to.label} : ${Math.round(ROUTE.km)} km${dur}.` + (ROUTE.approx ? ' Le serveur d\'itinéraires ne répondait pas : trajet approximatif en ligne droite.' : ' Itinéraire © OpenStreetMap (OSRM).');
   if (!out.length) { $('rtHero').innerHTML = `<p class="empty">Aucune station n'affiche de ${FUEL[set.fuel].toLowerCase()} à ${set.det} km ou moins de ta route. Essaie un détour plus grand.</p>`; $('rtList').innerHTML=''; $('rtLh').hidden=true; return; }
-  const t = out[0], avgCost = out.reduce((a,o)=>a+o.cost,0)/out.length, avg = out.reduce((a,o)=>a+o.p,0)/out.length, net = avgCost - t.cost;
+  const t = out.find(o=>!o.stale) || out[0], avgCost = out.reduce((a,o)=>a+o.cost,0)/out.length, avg = out.reduce((a,o)=>a+o.p,0)/out.length, net = avgCost - t.cost;
   $('rtHero').innerHTML = `<div class="hero">
     <p class="lead">Arrête-toi chez</p>
     <p class="name">${esc(title(t.s))} ${starBtn(t.s)}</p>
@@ -1027,8 +1081,10 @@ function renderRoute(){
     ${t.disc ? `<p class="rab">Avec ton rabais de ${fmt1(t.disc)} ¢ (affiché ${fmt1(t.p0)} ¢)</p>` : ''}
     <p class="gain">à ${Math.round(t.along)} km de ton départ · détour ≈ ${fmt1(t.detour)} km${net>=0.05 ? ` · ${money(net)} de moins qu'une station moyenne sur ta route` : ''}</p>
     <a class="b go" href="${gmapsVia(t.s)}" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M12 18.5l7.3 2.5a.5.5 0 0 0 .6-.7L12 3l-7.9 17.3a.5.5 0 0 0 .6.7z"/></svg>Y aller avec l'arrêt</a>
-    <p class="cost">Plein de ${L} L : ${money(t.cost)}, détour compris · ${out.length} station${out.length>1?'s':''} sur ta route</p></div>`;
-  const rest = out.slice(1, 31);
+    <p class="cost">Plein de ${L} L : ${money(t.cost)}, détour compris · ${out.length} station${out.length>1?'s':''} sur ta route</p>
+    ${sigBlock(t)}</div>`;
+  RTHERO = t;
+  const rest = out.filter(o=>o!==t).slice(0, 30);
   $('rtLh').hidden = !rest.length;
   $('rtList').innerHTML = rest.map(o=>rtRow(o, avg)).join('');
 }
@@ -1080,6 +1136,33 @@ $('rabAdd').addEventListener('click', ()=>{
   store.set('disc', DISC); $('rabV').value=''; $('rabB').value=''; render();
 });
 $('rabList').addEventListener('click', e=>{ const b=e.target.closest('[data-unrab]'); if (!b) return; delete DISC[b.dataset.unrab]; store.set('disc', DISC); render(); });
+
+/* ---------- Signaler un prix ---------- */
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-sig]'); if (!b) return;
+  const f = b.nextElementSibling; f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus();
+});
+document.addEventListener('submit', e=>{
+  const form = e.target.closest('.sigf'); if (!form) return;
+  e.preventDefault();
+  const t = form.closest('#rtHero') ? RTHERO : HERO; if (!t) return;
+  const v = parseFloat(String(form.p.value).replace(',', '.').replace(/[^\d.]/g,''));
+  const err = form.querySelector('.sigerr');
+  if (!(v>=80 && v<=300)) { err.textContent = 'Entre le prix en cents le litre, par exemple 158,9.'; return; }
+  if (t.pr!=null && Math.abs(v-t.pr)>60) { err.textContent = `Ça fait plus de 60 ¢ d'écart avec la Régie (${fmt1(t.pr)} ¢) : vérifie le prix.`; return; }
+  const k = sid(t.s), f = set.fuel, p = Math.round(v*10)/10, now = Math.floor(Date.now()/1000);
+  const same = t.pr!=null && Math.abs(p-t.pr)<0.05;
+  MYSIG[k] = {...(MYSIG[k]||{}), [f]: [same ? null : p, now, t.pr]};
+  store.set('sig', MYSIG);
+  fetch(`${NTFY}/${SIGNAL}`, {method:'POST', body: JSON.stringify({k, f, p})}).catch(()=>{});
+  if (same) { if (t.s.sig) { t.s.sig = {...t.s.sig}; delete t.s.sig[f]; } }
+  else t.s.sig = {...(t.s.sig||{}), [f]: [p, now, t.pr]};
+  render();
+  $('status').textContent = same ? 'Merci ! Prix de la Régie confirmé.' : `Merci ! ${title(t.s)} est maintenant à ${fmt1(p)} ¢ dans l'appli, pour tout le monde d'ici 10 minutes.`;
+  setTimeout(()=>$('status').textContent='', 6000);
+});
+
+document.addEventListener('input', e=>{ const f=e.target.closest('.sigf'); if (f) f.querySelector('.sigerr').textContent=''; });
 
 /* ---------- Partager ---------- */
 document.addEventListener('click', async e=>{
