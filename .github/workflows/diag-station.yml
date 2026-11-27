@@ -1,0 +1,16 @@
+name: Diagnostic d'une station
+on:
+  workflow_dispatch:
+    inputs:
+      q: { description: "Texte à chercher (adresse ou nom)", default: "soucy" }
+      debut: { description: "Heure de début (UTC)", default: "14" }
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install openpyxl==3.1.5
+      - env: { Q: "${{ inputs.q }}", DEBUT: "${{ inputs.debut }}" }
+        run: python scripts/diag_station.py "$Q" "$DEBUT"
