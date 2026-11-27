@@ -21,6 +21,8 @@ async def main():
         await pg.wait_for_timeout(2500)
         await pg.screenshot(path="captures/accueil.png")
         print("Heure locale :", await pg.evaluate("new Date().toString()"))
+        print("Bouton prix différent :", await pg.locator("#hero [data-sig]").count())
+        print("Colonnes signalement/fraîcheur :", await pg.evaluate("fetch('stations.json?t='+Date.now()).then(r=>r.json()).then(d=>{const s=d.stations; return {colonnes: s[0].length, avecDate: s.filter(x=>x[12]).length, signales: s.filter(x=>x[11]).length}})"))
         print("Ouvertes seulement :", await pg.is_checked("#openCk"))
         print("Station conseillée :", (await pg.inner_text("#hero")).replace("\n", " / ")[:220])
         print("Autres choix :", (await pg.inner_text("#list")).replace("\n", " / ")[:300])
